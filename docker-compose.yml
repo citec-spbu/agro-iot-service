@@ -1,0 +1,52 @@
+services:
+  iot-db:
+    image: postgres:15
+    container_name: iot-db
+    env_file:
+      - .env
+    ports:
+      - 5438:5432
+    restart: always
+    volumes:
+      - iot-pgdata:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
+
+  iot-migrations:
+    build: .
+    container_name: iot-service-migrations-tool
+    command: sh -c "alembic upgrade head"
+    depends_on:
+      iot-db:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./migrations:/app/migrations
+
+  iot-service:
+    build: .
+    container_name: iot-service
+    command: sh -c "uvicorn --factory src.main:create_app --host=0.0.0.0 --port=8080"
+    depends_on:
+      iot-db:
+        condition: service_healthy
+      iot-migrations:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    ports:
+      - 8006:8080
+      - 9000:9000
+    restart: always
+
+volumes:
+  iot-pgdata:
+
+networks:
+  default:
+    name: agronetwork
+    external: true
