@@ -8,14 +8,12 @@ from src.models.base import Base
 
 
 class Station(Base):
+    field_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     hardware_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=False
+        BigInteger, unique=True, nullable=False, index=True
     )
-    field_id: Mapped[uuid.UUID] = mapped_column(Uuid, unique=True, nullable=False)
     org_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False, index=True)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Double, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Double, nullable=True)
-    last_seen_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -2,7 +2,7 @@ from httpx import AsyncClient, HTTPStatusError
 
 
 class BaseHttpClient:
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: float = 3.0):
         self._timeout = timeout
 
     async def get_json(

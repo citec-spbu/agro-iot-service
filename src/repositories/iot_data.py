@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,10 +16,10 @@ class SensorDataRepository(SQLAlchemyRepository):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(SensorData, session)
 
-    async def list_sensor_ids(self, station_id: int) -> list[int]:
+    async def list_sensor_ids(self, field_id: uuid.UUID) -> list[int]:
         res = await self.session.execute(
             select(distinct(SensorData.sensor_id))
-            .where(SensorData.station_id == station_id)
+            .where(SensorData.field_id == field_id)
             .order_by(SensorData.sensor_id)
         )
         return list(res.scalars().all())

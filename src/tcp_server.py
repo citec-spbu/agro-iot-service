@@ -15,9 +15,9 @@ PACKET_SENSOR = 0x02
 
 # param_id -> (name, byte_size)
 STATION_PARAMS = {
-    0x00: ("wind_speed", 2),
-    0x01: ("wind_direction", 2),
-    0x02: ("rain", 2),
+    0x02: ("wind_speed", 2),
+    0x03: ("wind_direction", 2),
+    0x04: ("rain", 2),
 }
 
 SENSOR_PARAMS = {
@@ -26,43 +26,53 @@ SENSOR_PARAMS = {
 }
 
 
-async def _save_station_data(station_id: int, params: dict) -> None:
-    now = datetime.now(settings.TZ)
-    naive_now = now.replace(tzinfo=None)
+async def _save_station_data(hardware_id: int, params: dict) -> None:
+    now_local = datetime.now(settings.TZ).replace(tzinfo=None)
     uow = SQLAlchemyUnitOfWork()
     try:
         async with uow:
+            station = await uow.stations.read(hardware_id=hardware_id)
+            if station is None:
+                logger.warning(
+                    "Unknown hardware_id=%s, station packet dropped", hardware_id
+                )
+                return
             schema = StationDataCreateSchema(
-                station_id=station_id,
+                field_id=station.field_id,
                 payload=params,
-                date_time=naive_now,
+                date_time=now_local,
             )
             await uow.station_data.create(schema.model_dump())
-            await uow.stations.update_last_seen(station_id, now)
+            await uow.stations.update_last_seen(hardware_id, now_local)
             await uow.commit()
     except Exception:
-        logger.exception("Failed to persist station data | station=%s", station_id)
+        logger.exception("Failed to persist station data | hardware=%s", hardware_id)
 
 
-async def _save_sensor_data(station_id: int, sensor_id: int, params: dict) -> None:
-    now = datetime.now(settings.TZ)
-    naive_now = now.replace(tzinfo=None)
+async def _save_sensor_data(hardware_id: int, sensor_id: int, params: dict) -> None:
+    now_local = datetime.now(settings.TZ).replace(tzinfo=None)
     uow = SQLAlchemyUnitOfWork()
     try:
         async with uow:
+            station = await uow.stations.read(hardware_id=hardware_id)
+            if station is None:
+                logger.warning(
+                    "Unknown hardware_id=%s, sensor packet dropped", hardware_id
+                )
+                return
             schema = SensorDataCreateSchema(
-                station_id=station_id,
+                field_id=station.field_id,
                 sensor_id=sensor_id,
                 payload=params,
-                date_time=naive_now,
+                date_time=now_local,
             )
             await uow.sensor_data.create(schema.model_dump())
-            await uow.stations.update_last_seen(station_id, now)
+            await uow.stations.update_last_seen(hardware_id, now_local)
             await uow.commit()
     except Exception:
         logger.exception(
-            "Failed to persist sensor data | station=%s | sensor=%s",
-            station_id, sensor_id,
+            "Failed to persist sensor data | hardware=%s | sensor=%s",
+            hardware_id, sensor_id,
         )
 
 
@@ -72,7 +82,7 @@ class SensorProtocol(asyncio.Protocol):
 
     def connection_made(self, transport):
         peer = transport.get_extra_info("peername")
-        logger.info("Sensor connected: %s", peer)
+        logger.debug("Device connected: %s", peer)
         self._transport = transport
 
     def data_received(self, data: bytes):
@@ -80,7 +90,7 @@ class SensorProtocol(asyncio.Protocol):
         self._process_buffer()
 
     def connection_lost(self, exc):
-        logger.info("Sensor disconnected")
+        logger.debug("Device disconnected")
 
     def _process_buffer(self):
         while len(self._buffer) >= 2:
@@ -116,7 +126,7 @@ class SensorProtocol(asyncio.Protocol):
         self._buffer = self._buffer[total:]
 
         params = self._parse_params(STATION_PARAMS, payload)
-        logger.info("Station data | station=%s | %s", hardware_id, params)
+        logger.debug("Station packet | hardware=%s | %s", hardware_id, params)
         asyncio.create_task(_save_station_data(hardware_id, params))
         return True
 
@@ -138,8 +148,8 @@ class SensorProtocol(asyncio.Protocol):
         self._buffer = self._buffer[total:]
 
         params = self._parse_params(SENSOR_PARAMS, payload)
-        logger.info(
-            "Sensor data | station=%s | sensor=%d | %s",
+        logger.debug(
+            "Sensor packet | hardware=%s | sensor=%d | %s",
             hardware_id, sensor_id, params,
         )
         asyncio.create_task(_save_sensor_data(hardware_id, sensor_id, params))

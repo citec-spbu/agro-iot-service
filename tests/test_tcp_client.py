@@ -1,34 +1,60 @@
+"""Минимальный TCP-клиент для отладки парсера агро-IoT-сервиса.
+
+Шлёт по одному station- и sensor-пакету на TCP-сервер (`localhost:9000` по умолчанию).
+Перед запуском станция с `HARDWARE_ID` должна быть зарегистрирована через
+`POST /api/iot/stations` — иначе сервис отбросит пакеты (FK).
+
+Запуск:
+    HARDWARE_ID=12345 python tests/test_tcp_client.py
+"""
+import os
 import socket
 import struct
+import sys
 
-HOST = "127.0.0.1"
-PORT = 9000
+HOST = os.environ.get("IOT_TCP_HOST", "127.0.0.1")
+PORT = int(os.environ.get("IOT_TCP_PORT", "9000"))
+HARDWARE_ID = int(os.environ.get("HARDWARE_ID", "12345"))
+SENSOR_ID = int(os.environ.get("SENSOR_ID", "1"))
 
-field_id = 1001  # серийник станции (int8)
 
-# Пакет станции: AA 01 [8б field_id] [2б размер] [параметры...]
-# param_id -> (name, byte_size): 0x00=wind_speed(2), 0x01=wind_direction(2), 0x02=rain(2)
-payload = b""
-payload += struct.pack(">Bh", 0x00, 35)    # wind_speed = 35
-payload += struct.pack(">Bh", 0x01, 180)   # wind_direction = 180
-payload += struct.pack(">Bh", 0x02, 50)    # rain = 50
+def build_station_packet(hw_id: int) -> bytes:
+    # STATION_PARAMS: 0x02 wind_speed (2B), 0x03 wind_direction (2B), 0x04 rain (2B)
+    payload = (
+        struct.pack(">Bh", 0x02, 35)
+        + struct.pack(">Bh", 0x03, 180)
+        + struct.pack(">Bh", 0x04, 50)
+    )
+    return struct.pack(">BBQH", 0xAA, 0x01, hw_id, len(payload)) + payload
 
-packet = struct.pack(">BBQh", 0xAA, 0x01, field_id, len(payload)) + payload
 
-print("Sending station packet:", packet.hex())
+def build_sensor_packet(hw_id: int, sensor_id: int) -> bytes:
+    # SENSOR_PARAMS: 0x00 temperature (2B), 0x01 soil_moisture (1B)
+    payload = struct.pack(">Bh", 0x00, 220) + struct.pack(">Bb", 0x01, 65)
+    return (
+        struct.pack(">BBQIH", 0xAA, 0x02, hw_id, sensor_id, len(payload))
+        + payload
+    )
 
-# Пакет датчика: AA 02 [8б field_id] [4б sensor_id] [2б размер] [параметры...]
-# param_id -> (name, byte_size): 0x00=temperature(2), 0x01=soil_moisture(1)
-sensor_payload = b""
-sensor_payload += struct.pack(">Bh", 0x00, 225)   # temperature = 225
-sensor_payload += struct.pack(">Bb", 0x01, 60)     # soil_moisture = 60 (1 byte)
 
-sensor_packet = struct.pack(">BBQI", 0xAA, 0x02, field_id, 1) + struct.pack(">H", len(sensor_payload)) + sensor_payload
+def main() -> None:
+    pkt_station = build_station_packet(HARDWARE_ID)
+    pkt_sensor = build_sensor_packet(HARDWARE_ID, SENSOR_ID)
 
-print("Sending sensor packet:", sensor_packet.hex())
+    print(f"-> {HOST}:{PORT} | hardware_id={HARDWARE_ID} sensor_id={SENSOR_ID}")
+    print(f"   station ({len(pkt_station)}b): {pkt_station.hex()}")
+    print(f"   sensor  ({len(pkt_sensor)}b):  {pkt_sensor.hex()}")
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.connect((HOST, PORT))
-    s.sendall(packet)           # станция
-    s.sendall(sensor_packet)    # датчик
-    print("Sent!")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect((HOST, PORT))
+        sock.sendall(pkt_station)
+        sock.sendall(pkt_sensor)
+    print("sent OK")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ConnectionRefusedError, socket.timeout) as exc:
+        print(f"connect failed: {exc}", file=sys.stderr)
+        sys.exit(1)

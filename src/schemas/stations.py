@@ -5,27 +5,26 @@ from pydantic import BaseModel, ConfigDict
 
 
 class StationRegisterSchema(BaseModel):
-    hardware_id: int
+    """Тело `POST /api/iot/stations`."""
+
     field_id: uuid.UUID
+    hardware_id: int
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
 
 
 class StationUpdateSchema(BaseModel):
-    field_id: uuid.UUID | None = None
+    """Тело `PUT /api/iot/stations/{field_id}` — ничего что меняет идентичность станции."""
+
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
 
 
-class StationCreateSchema(StationRegisterSchema):
-    org_id: uuid.UUID
-
-
 class StationReadSchema(BaseModel):
-    hardware_id: int
     field_id: uuid.UUID
+    hardware_id: int
     org_id: uuid.UUID
     name: str | None = None
     latitude: float | None = None
@@ -36,6 +35,8 @@ class StationReadSchema(BaseModel):
 
 
 class StationRegisterResponseSchema(BaseModel):
+    """Ответ регистрации. `coords_match_field` — null, если fields-service недоступен."""
+
     station: StationReadSchema
     coords_match_field: bool | None = None
 
@@ -47,6 +48,23 @@ class StationOnFieldSchema(BaseModel):
     longitude: float | None = None
     last_seen_at: datetime | None = None
     online: bool
-    coords_match_field: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class StationSensorOverviewSchema(BaseModel):
+    sensor_id: int
+    last_data: dict | None = None
+    last_data_at: datetime | None = None
+
+
+class StationOverviewSchema(BaseModel):
+    station: StationReadSchema
+    online: bool
+    last_data: dict | None = None
+    last_data_at: datetime | None = None
+    sensors: list[StationSensorOverviewSchema]
+
+
+class DashboardSchema(BaseModel):
+    stations: list[StationOverviewSchema]
