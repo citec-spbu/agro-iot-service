@@ -87,9 +87,8 @@ docker network create agronetwork    # один раз
 cp .env.example .env
 docker compose up -d
 ```
-
-- Swagger: <http://localhost:8006/docs>
-- TCP: `localhost:9000`
+- - Swagger: <http://localhost:8006/docs>
+- TCP из Docker-контейнера: внутренний порт `9000`; с хоста по текущему `docker-compose.yml`: `localhost:9006` (`9006:9000`).
 
 ## Интеграция с платформой
 
