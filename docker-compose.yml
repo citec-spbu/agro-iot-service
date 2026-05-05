@@ -40,7 +40,7 @@ services:
       - .env
     ports:
       - 8006:8080
-      - 9000:9000
+      - 9006:9000
     restart: always
 
 volumes:
