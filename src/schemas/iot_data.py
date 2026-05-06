@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 class StationDataCreateSchema(BaseModel):
     field_id: uuid.UUID
-    payload: dict[str, int]
+    payload: dict[str, int | float]
     date_time: datetime
 
 
@@ -19,7 +19,7 @@ class StationDataReadSchema(StationDataCreateSchema):
 class SensorDataCreateSchema(BaseModel):
     field_id: uuid.UUID
     sensor_id: int
-    payload: dict[str, int]
+    payload: dict[str, int | float]
     date_time: datetime
 
 

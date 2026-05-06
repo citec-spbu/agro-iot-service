@@ -15,15 +15,41 @@ PACKET_SENSOR = 0x02
 
 # param_id -> (name, byte_size)
 STATION_PARAMS = {
+    0x00: ("temperature", 2),
+    0x01: ("soil_moisture", 1),
     0x02: ("wind_speed", 2),
     0x03: ("wind_direction", 2),
     0x04: ("rain", 2),
 }
 
 SENSOR_PARAMS = {
-    0x00: ("temperature", 2),
-    0x01: ("soil_moisture", 1),
+    0x00: ("temperaturea", 1),
+    0x01: ("soil_moisturea", 1),
+    0x02: ("temperaturez", 1),
+    0x03: ("soil_moisturez", 1),
 }
+
+
+def _decode_offset_pair(value: bytes) -> int:
+    high, low = value
+    return ((high - 1) << 8) + low - 1
+
+
+def _normalize_station_params(params: dict[str, int | bytes]) -> dict[str, int | float]:
+    normalized = {}
+    for name, value in params.items():
+        if name == "temperature":
+            raw_temperature = int.from_bytes(value, byteorder="big", signed=True)
+            normalized[name] = round((raw_temperature - 900) / 10, 1)
+        elif name == "wind_speed":
+            normalized[name] = round(_decode_offset_pair(value) / 5, 1)
+        elif name == "wind_direction":
+            normalized[name] = _decode_offset_pair(value)
+        elif name == "rain":
+            normalized[name] = round(_decode_offset_pair(value) / 5, 1)
+        else:
+            normalized[name] = value
+    return normalized
 
 
 async def _save_station_data(hardware_id: int, params: dict) -> None:
@@ -125,7 +151,8 @@ class SensorProtocol(asyncio.Protocol):
         payload = self._buffer[12:total]
         self._buffer = self._buffer[total:]
 
-        params = self._parse_params(STATION_PARAMS, payload)
+        raw_params = self._parse_params(STATION_PARAMS, payload, raw_two_byte=True)
+        params = _normalize_station_params(raw_params)
         logger.debug("Station packet | hardware=%s | %s", hardware_id, params)
         asyncio.create_task(_save_station_data(hardware_id, params))
         return True
@@ -155,7 +182,9 @@ class SensorProtocol(asyncio.Protocol):
         asyncio.create_task(_save_sensor_data(hardware_id, sensor_id, params))
         return True
 
-    def _parse_params(self, mapping: dict, payload: bytes) -> dict[str, int]:
+    def _parse_params(
+        self, mapping: dict, payload: bytes, *, raw_two_byte: bool = False
+    ) -> dict[str, int | bytes]:
         params = {}
         offset = 0
         while offset < len(payload):
@@ -175,10 +204,13 @@ class SensorProtocol(asyncio.Protocol):
                 logger.warning("Truncated payload for param %s", name)
                 break
 
+            chunk = payload[offset:offset + size]
             if size == 1:
-                value = struct.unpack(">b", payload[offset:offset + 1])[0]
+                value = chunk[0]
+            elif raw_two_byte:
+                value = chunk
             else:
-                value = struct.unpack(">h", payload[offset:offset + 2])[0]
+                value = struct.unpack(">h", chunk)[0]
 
             params[name] = value
             offset += size
