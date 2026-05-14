@@ -162,4 +162,12 @@ cython_debug/
 .idea/
 .DS_Store
 .vscode/
+
+# Agents
 .claude/
+.codex/
+.agents/
+
+# Local packet captures
+*.pcap
+*.pcapng

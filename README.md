@@ -47,13 +47,22 @@ Big-endian. Незарегистрированные `hardware_id` отбрас�
 ```
 [0xAA][0x01][hardware_id 8B][len 2B][payload]
 payload = { param_id 1B, value Nb }*
-params: 0x02 wind_speed (2B) | 0x03 wind_direction (2B) | 0x04 rain (2B)
+params:
+  0x00 temperature (2B)    -> (raw - 900) / 10
+  0x01 soil_moisture (1B)  -> raw %
+  0x02 wind_speed (2B)     -> (((high - 1) << 8) + low - 1) / 5
+  0x03 wind_direction (2B) -> ((high - 1) << 8) + low - 1
+  0x04 rain (2B)           -> (((high - 1) << 8) + low - 1) / 5
 ```
 
 **Sensor** (`0x02`):
 ```
 [0xAA][0x02][hardware_id 8B][sensor_id 4B][len 2B][payload]
-params: 0x00 temperature (2B) | 0x01 soil_moisture (1B)
+params:
+  0x00 soil_moisturea (1B) -> raw %
+  0x01 temperaturea (1B)   -> -20 + raw * 80 / 255
+  0x02 soil_moisturez (1B) -> raw %
+  0x03 temperaturez (1B)   -> -55 + raw * 180 / 255
 ```
 
 ## API
@@ -95,5 +104,3 @@ docker compose up -d
 - `auth-service` — JWT introspect (`APP_AUTH_SERVICE_URL`).
 - `api-gateway` — нужна `location /api/iot { auth_request /api/auth/introspect; proxy_pass http://iot-service:8080/api/iot; }`.
 - `fields-service` — опц. для point-in-polygon при регистрации (через gateway, JWT пробрасывается).
-
-Сервис работает **параллельно** с OpenMeteo-`meteo-service`, не заменяя его.

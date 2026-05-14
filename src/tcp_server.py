@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import struct
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 
 from src.config import settings
@@ -13,21 +15,39 @@ HEADER_BYTE = 0xAA
 PACKET_STATION = 0x01
 PACKET_SENSOR = 0x02
 
-# param_id -> (name, byte_size)
-STATION_PARAMS = {
-    0x00: ("temperature", 2),
-    0x01: ("soil_moisture", 1),
-    0x02: ("wind_speed", 2),
-    0x03: ("wind_direction", 2),
-    0x04: ("rain", 2),
-}
 
-SENSOR_PARAMS = {
-    0x00: ("temperaturea", 1),
-    0x01: ("soil_moisturea", 1),
-    0x02: ("temperaturez", 1),
-    0x03: ("soil_moisturez", 1),
-}
+@dataclass(frozen=True)
+class ParamSpec:
+    name: str
+    size: int
+    decode: Callable[[bytes], int | float]
+
+
+class PayloadDecoder:
+    def __init__(self, specs: dict[int, ParamSpec]):
+        self._specs = specs
+
+    def decode(self, payload: bytes) -> dict[str, int | float]:
+        params = {}
+        offset = 0
+        while offset < len(payload):
+            param_id = payload[offset]
+            offset += 1
+
+            spec = self._specs.get(param_id)
+            if spec is None:
+                logger.warning("Unknown param_id: 0x%02X", param_id)
+                break
+
+            if offset + spec.size > len(payload):
+                logger.warning("Truncated payload for param %s", spec.name)
+                break
+
+            value = payload[offset:offset + spec.size]
+            params[spec.name] = spec.decode(value)
+            offset += spec.size
+
+        return params
 
 
 def _decode_offset_pair(value: bytes) -> int:
@@ -35,21 +55,45 @@ def _decode_offset_pair(value: bytes) -> int:
     return ((high - 1) << 8) + low - 1
 
 
-def _normalize_station_params(params: dict[str, int | bytes]) -> dict[str, int | float]:
-    normalized = {}
-    for name, value in params.items():
-        if name == "temperature":
-            raw_temperature = int.from_bytes(value, byteorder="big", signed=True)
-            normalized[name] = round((raw_temperature - 900) / 10, 1)
-        elif name == "wind_speed":
-            normalized[name] = round(_decode_offset_pair(value) / 5, 1)
-        elif name == "wind_direction":
-            normalized[name] = _decode_offset_pair(value)
-        elif name == "rain":
-            normalized[name] = round(_decode_offset_pair(value) / 5, 1)
-        else:
-            normalized[name] = value
-    return normalized
+def _decode_unsigned_byte(value: bytes) -> int:
+    return value[0]
+
+
+def _decode_station_temperature(value: bytes) -> float:
+    raw_temperature = int.from_bytes(value, byteorder="big", signed=True)
+    return round((raw_temperature - 900) / 10, 1)
+
+
+def _decode_station_scaled_pair(value: bytes) -> float:
+    return round(_decode_offset_pair(value) / 5, 1)
+
+
+def _decode_air_temperature(value: bytes) -> float:
+    return round(-20 + value[0] * 80 / 255, 1)
+
+
+def _decode_soil_temperature(value: bytes) -> float:
+    return round(-55 + value[0] * 180 / 255, 1)
+
+
+STATION_DECODER = PayloadDecoder(
+    {
+        0x00: ParamSpec("temperature", 2, _decode_station_temperature),
+        0x01: ParamSpec("soil_moisture", 1, _decode_unsigned_byte),
+        0x02: ParamSpec("wind_speed", 2, _decode_station_scaled_pair),
+        0x03: ParamSpec("wind_direction", 2, _decode_offset_pair),
+        0x04: ParamSpec("rain", 2, _decode_station_scaled_pair),
+    }
+)
+
+SENSOR_DECODER = PayloadDecoder(
+    {
+        0x00: ParamSpec("soil_moisturea", 1, _decode_unsigned_byte),
+        0x01: ParamSpec("temperaturea", 1, _decode_air_temperature),
+        0x02: ParamSpec("soil_moisturez", 1, _decode_unsigned_byte),
+        0x03: ParamSpec("temperaturez", 1, _decode_soil_temperature),
+    }
+)
 
 
 async def _save_station_data(hardware_id: int, params: dict) -> None:
@@ -151,8 +195,7 @@ class SensorProtocol(asyncio.Protocol):
         payload = self._buffer[12:total]
         self._buffer = self._buffer[total:]
 
-        raw_params = self._parse_params(STATION_PARAMS, payload, raw_two_byte=True)
-        params = _normalize_station_params(raw_params)
+        params = STATION_DECODER.decode(payload)
         logger.debug("Station packet | hardware=%s | %s", hardware_id, params)
         asyncio.create_task(_save_station_data(hardware_id, params))
         return True
@@ -174,48 +217,13 @@ class SensorProtocol(asyncio.Protocol):
         payload = self._buffer[16:total]
         self._buffer = self._buffer[total:]
 
-        params = self._parse_params(SENSOR_PARAMS, payload)
+        params = SENSOR_DECODER.decode(payload)
         logger.debug(
             "Sensor packet | hardware=%s | sensor=%d | %s",
             hardware_id, sensor_id, params,
         )
         asyncio.create_task(_save_sensor_data(hardware_id, sensor_id, params))
         return True
-
-    def _parse_params(
-        self, mapping: dict, payload: bytes, *, raw_two_byte: bool = False
-    ) -> dict[str, int | bytes]:
-        params = {}
-        offset = 0
-        while offset < len(payload):
-            if offset + 1 > len(payload):
-                break
-
-            param_id = payload[offset]
-            offset += 1
-
-            if param_id not in mapping:
-                logger.warning("Unknown param_id: 0x%02X", param_id)
-                break
-
-            name, size = mapping[param_id]
-
-            if offset + size > len(payload):
-                logger.warning("Truncated payload for param %s", name)
-                break
-
-            chunk = payload[offset:offset + size]
-            if size == 1:
-                value = chunk[0]
-            elif raw_two_byte:
-                value = chunk
-            else:
-                value = struct.unpack(">h", chunk)[0]
-
-            params[name] = value
-            offset += size
-
-        return params
 
 
 async def start_tcp_server(host: str, port: int):

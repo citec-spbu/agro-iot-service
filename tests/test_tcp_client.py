@@ -1,11 +1,5 @@
-"""Минимальный TCP-клиент для отладки парсера агро-IoT-сервиса.
-
-Шлёт по одному station- и sensor-пакету на TCP-сервер (`localhost:9000` по умолчанию).
-Перед запуском станция с `HARDWARE_ID` должна быть зарегистрирована через
-`POST /api/iot/stations` — иначе сервис отбросит пакеты (FK).
-
-Запуск:
-    HARDWARE_ID=12345 python tests/test_tcp_client.py
+"""
+Минимальный TCP-клиент для отладки парсера агро-IoT-сервиса.
 """
 import os
 import socket
@@ -18,19 +12,43 @@ HARDWARE_ID = int(os.environ.get("HARDWARE_ID", "12345"))
 SENSOR_ID = int(os.environ.get("SENSOR_ID", "1"))
 
 
+def encode_station_temperature(value: float) -> bytes:
+    return struct.pack(">h", round(value * 10 + 900))
+
+
+def encode_station_offset_pair(value: float, *, scale: int = 1) -> bytes:
+    raw = round(value * scale)
+    return bytes([(raw >> 8) + 1, (raw & 0xFF) + 1])
+
+
+def encode_air_temperature(value: float) -> int:
+    return round((value + 20) * 255 / 80)
+
+
+def encode_soil_temperature(value: float) -> int:
+    return round((value + 55) * 255 / 180)
+
+
 def build_station_packet(hw_id: int) -> bytes:
-    # STATION_PARAMS: 0x02 wind_speed (2B), 0x03 wind_direction (2B), 0x04 rain (2B)
     payload = (
-        struct.pack(">Bh", 0x02, 35)
-        + struct.pack(">Bh", 0x03, 180)
-        + struct.pack(">Bh", 0x04, 50)
+        bytes([0x00]) + encode_station_temperature(-9.9)
+        + bytes([0x01, 65])
+        + bytes([0x02]) + encode_station_offset_pair(7.0, scale=5)
+        + bytes([0x03]) + encode_station_offset_pair(180)
+        + bytes([0x04]) + encode_station_offset_pair(10.0, scale=5)
     )
     return struct.pack(">BBQH", 0xAA, 0x01, hw_id, len(payload)) + payload
 
 
 def build_sensor_packet(hw_id: int, sensor_id: int) -> bytes:
-    # SENSOR_PARAMS: 0x00 temperature (2B), 0x01 soil_moisture (1B)
-    payload = struct.pack(">Bh", 0x00, 220) + struct.pack(">Bb", 0x01, 65)
+    payload = bytes(
+        [
+            0x00, 55,
+            0x01, encode_air_temperature(20.0),
+            0x02, 65,
+            0x03, encode_soil_temperature(35.0),
+        ]
+    )
     return (
         struct.pack(">BBQIH", 0xAA, 0x02, hw_id, sensor_id, len(payload))
         + payload
