@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+env:
+  COMPOSE_SERVICE: iot-service
+  SOURCE_DIR: agro-iot-service
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/prod'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+          ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Rsync sources to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SOURCES_PATH: ${{ secrets.SOURCES_PATH }}
+        run: |
+          rsync -az --delete \
+            --exclude='.git' --exclude='node_modules' --exclude='.venv' \
+            --exclude='target' --exclude='dist' --exclude='.idea' --exclude='.pytest_cache' \
+            -e "ssh -p ${SSH_PORT:-22} -i ~/.ssh/id_ed25519" \
+            ./ "${SSH_USER}@${SSH_HOST}:${SOURCES_PATH}/${SOURCE_DIR}/"
+
+      - name: Build & up on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_PATH }}"
+            docker compose -f docker-compose.prod.yml build "${{ env.COMPOSE_SERVICE }}"
+            docker compose -f docker-compose.prod.yml up -d --no-deps "${{ env.COMPOSE_SERVICE }}"
+            docker image prune -f || true
