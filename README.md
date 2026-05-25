@@ -11,19 +11,26 @@ IoT-приёмник датчиков и метеостанций для пла�
 
 ## Стек
 
-Python 3.11 · FastAPI · SQLAlchemy 2 async · asyncpg · Alembic · Postgres 15 · shapely · httpx.
+Python 3.11
+FastAPI
+SQLAlchemy 2 async
+asyncpg
+Alembic
+Postgres 15
+shapely
+httpx
 
 ## Схема БД
 
 ```
 stations
   field_id      UUID  PK            -- бизнес-id поля (одна станция = одно поле)
-  hardware_id   BIGINT UNIQUE       -- серийник, прошит в железе (lookup из TCP)
+  hardware_id   BIGINT UNIQUE       -- айди станции из пакета
   org_id        UUID  NOT NULL  INDEXED
   name          TEXT
   latitude      DOUBLE PRECISION
   longitude     DOUBLE PRECISION
-  last_seen_at  TIMESTAMP           -- naive, в TZ из APP_TZ_NAME
+  last_seen_at  TIMESTAMP           -- в TZ из APP_TZ_NAME
 
 station_data                          -- ON DELETE CASCADE от stations
   id        UUID PK
@@ -34,19 +41,20 @@ station_data                          -- ON DELETE CASCADE от stations
 sensor_data                           -- ON DELETE CASCADE от stations
   id        UUID PK
   field_id  UUID NOT NULL FK -> stations.field_id
-  sensor_id INTEGER NOT NULL          -- под-ID датчика из пакета
+  sensor_id INTEGER NOT NULL          -- ID датчика из пакета
   payload   JSONB
   date_time TIMESTAMP
 ```
 
 ## TCP-протокол
 
-Big-endian. Незарегистрированные `hardware_id` отбрасываются (warning в лог).
+Незарегистрированные `hardware_id` отбрасываются (warning в лог).
 
 **Station** (`0x01`):
 ```
 [0xAA][0x01][hardware_id 8B][len 2B][payload]
 payload = { param_id 1B, value Nb }*
+Station payload включает температуру и влажность станции (`soil_moisture`), а также ветер и осадки.
 params:
   0x00 temperature (2B)    -> (raw - 900) / 10
   0x01 soil_moisture (1B)  -> raw %
@@ -103,4 +111,4 @@ docker compose up -d
 
 - `auth-service` — JWT introspect (`APP_AUTH_SERVICE_URL`).
 - `api-gateway` — нужна `location /api/iot { auth_request /api/auth/introspect; proxy_pass http://iot-service:8080/api/iot; }`.
-- `fields-service` — опц. для point-in-polygon при регистрации (через gateway, JWT пробрасывается).
+- `fields-service` — опц. при регистрации (через gateway, JWT пробрасывается).
