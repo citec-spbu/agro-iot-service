@@ -54,6 +54,7 @@ class IoTService:
                         "name": body.name,
                         "latitude": body.latitude,
                         "longitude": body.longitude,
+                        "polling_interval_seconds": body.polling_interval_seconds,
                     }
                 )
             except DBIntegrityError as exc:
@@ -116,6 +117,7 @@ class IoTService:
                     name=r.name,
                     latitude=r.latitude,
                     longitude=r.longitude,
+                    polling_interval_seconds=r.polling_interval_seconds,
                     last_seen_at=r.last_seen_at,
                     online=r.last_seen_at is not None and r.last_seen_at >= threshold,
                 )

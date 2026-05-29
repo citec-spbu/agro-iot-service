@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StationRegisterSchema(BaseModel):
@@ -12,6 +12,7 @@ class StationRegisterSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    polling_interval_seconds: int | None = Field(default=None, ge=1)
 
 
 class StationUpdateSchema(BaseModel):
@@ -20,6 +21,7 @@ class StationUpdateSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    polling_interval_seconds: int | None = Field(default=None, ge=1)
 
 
 class StationReadSchema(BaseModel):
@@ -29,6 +31,7 @@ class StationReadSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    polling_interval_seconds: int | None = None
     last_seen_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -46,6 +49,7 @@ class StationOnFieldSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    polling_interval_seconds: int | None = None
     last_seen_at: datetime | None = None
     online: bool
 

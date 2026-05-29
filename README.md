@@ -30,6 +30,7 @@ stations
   name          TEXT
   latitude      DOUBLE PRECISION
   longitude     DOUBLE PRECISION
+  polling_interval_seconds INTEGER -- интервал опроса датчиков станцией
   last_seen_at  TIMESTAMP           -- в TZ из APP_TZ_NAME
 
 station_data                          -- ON DELETE CASCADE от stations
@@ -81,9 +82,9 @@ params:
 
 | Method | Path | Описание |
 |---|---|---|
-| POST | `/stations` | Регистрация (`field_id`, `hardware_id`, `name?`, `latitude?`, `longitude?`) |
+| POST | `/stations` | Регистрация (`field_id`, `hardware_id`, `name?`, `latitude?`, `longitude?`, `polling_interval_seconds?`) |
 | GET | `/stations` | Мои станции |
-| GET / PUT / DELETE | `/stations/{field_id}` | Чтение / обновление (`name`/`lat`/`lon`) / удаление (CASCADE) |
+| GET / PUT / DELETE | `/stations/{field_id}` | Чтение / обновление (`name`/`lat`/`lon`/`polling_interval_seconds`) / удаление (CASCADE) |
 
 ### Данные (по `field_id`)
 

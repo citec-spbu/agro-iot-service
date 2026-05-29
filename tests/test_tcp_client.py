@@ -1,6 +1,6 @@
 import socket
 
-HOST = "127.0.0.1"
+HOST = "smart.agromelio.ru"
 PORT = 9006
 
 # hardware_id=7
