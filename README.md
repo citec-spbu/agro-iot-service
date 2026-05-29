@@ -6,7 +6,7 @@ IoT-приёмник датчиков и метеостанций для пла�
 
 - TCP-сервер на порту **9000** (бинарный протокол, FK-валидация по серийнику).
 - REST API под `/api/iot/*`: регистрация, текущие значения, история, агрегаты, дашборд.
-- Координаты станций + опц. point-in-polygon контура поля через `fields-service`.
+- Координаты станций + опц. point-in-polygon проверка по контурам поля через `fields-service`.
 - JWT-авторизация через `auth-service`/`api-gateway` (`auth_request introspect`).
 
 ## Стек
@@ -24,13 +24,13 @@ httpx
 
 ```
 stations
-  field_id      UUID  PK            -- бизнес-id поля (одна станция = одно поле)
+  field_id      UUID  PK            -- бизнес-id поля (в текущей модели одна станция = одно поле)
   hardware_id   BIGINT UNIQUE       -- айди станции из пакета
   org_id        UUID  NOT NULL  INDEXED
   name          TEXT
   latitude      DOUBLE PRECISION
   longitude     DOUBLE PRECISION
-  polling_interval_seconds INTEGER -- интервал опроса датчиков станцией
+  polling_interval DOUBLE PRECISION DEFAULT 0.5 -- интервал опроса датчиков станцией, в минутах
   last_seen_at  TIMESTAMP           -- в TZ из APP_TZ_NAME
 
 station_data                          -- ON DELETE CASCADE от stations
@@ -82,15 +82,15 @@ params:
 
 | Method | Path | Описание |
 |---|---|---|
-| POST | `/stations` | Регистрация (`field_id`, `hardware_id`, `name?`, `latitude?`, `longitude?`, `polling_interval_seconds?`) |
+| POST | `/stations` | Регистрация (`field_id`, `hardware_id`, `name?`, `latitude?`, `longitude?`, `polling_interval?`; по умолчанию `0.5` минуты) |
 | GET | `/stations` | Мои станции |
-| GET / PUT / DELETE | `/stations/{field_id}` | Чтение / обновление (`name`/`lat`/`lon`/`polling_interval_seconds`) / удаление (CASCADE) |
+| GET / PUT / DELETE | `/stations/{field_id}` | Чтение / обновление (`name`/`lat`/`lon`/`polling_interval`) / удаление (CASCADE) |
 
 ### Данные (по `field_id`)
 
 | Method | Path | Описание |
 |---|---|---|
-| GET | `/fields/{field_id}/stations` | Станции на поле + `online` + `last_seen_at` (для карты) |
+| GET | `/fields/{field_id}/stations` | Станции на поле + `online` + `last_seen_at` + `polling_interval` (для карты) |
 | GET | `/fields/{field_id}/data/last` | Последний пакет станции |
 | GET | `/fields/{field_id}/data/history?date_from=&date_to=` | История пакетов |
 | GET | `/fields/{field_id}/data/summary?date_from=&date_to=` | avg/min/max по каждому ключу payload |
@@ -105,7 +105,7 @@ docker network create agronetwork    # один раз
 cp .env.example .env
 docker compose up -d
 ```
-- - Swagger: <http://localhost:8006/docs>
+- Swagger: <http://localhost:8006/docs>
 - TCP из Docker-контейнера: внутренний порт `9000`; с хоста по текущему `docker-compose.yml`: `localhost:9006` (`9006:9000`).
 
 ## Интеграция с платформой
@@ -113,3 +113,11 @@ docker compose up -d
 - `auth-service` — JWT introspect (`APP_AUTH_SERVICE_URL`).
 - `api-gateway` — нужна `location /api/iot { auth_request /api/auth/introspect; proxy_pass http://iot-service:8080/api/iot; }`.
 - `fields-service` — опц. при регистрации (через gateway, JWT пробрасывается).
+
+## Пути дальнейшего развития
+
+- Сейчас станция привязывается к `field_id`, то есть к полю целиком. Если понадобится учитывать размещение станции внутри конкретного контура, можно расширить модель до связи с `contour_id` и обновить фронт.
+
+- Возможна замена TCP-контура приёма данных на MQTT-брокер с последующим обновлением прошивки станции.
+
+- Уже поддержано хранение интервала опроса датчиков станцией в `stations.polling_interval` в минутах. Следующий шаг — определить механизм передачи этого значения на станцию и применить его в логике опроса датчиков.

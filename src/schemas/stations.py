@@ -12,7 +12,7 @@ class StationRegisterSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
-    polling_interval_seconds: int | None = Field(default=None, ge=1)
+    polling_interval: float = Field(default=0.5, gt=0)
 
 
 class StationUpdateSchema(BaseModel):
@@ -21,7 +21,7 @@ class StationUpdateSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
-    polling_interval_seconds: int | None = Field(default=None, ge=1)
+    polling_interval: float | None = Field(default=None, gt=0)
 
 
 class StationReadSchema(BaseModel):
@@ -31,7 +31,7 @@ class StationReadSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
-    polling_interval_seconds: int | None = None
+    polling_interval: float = 0.5
     last_seen_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -49,7 +49,7 @@ class StationOnFieldSchema(BaseModel):
     name: str | None = None
     latitude: float | None = None
     longitude: float | None = None
-    polling_interval_seconds: int | None = None
+    polling_interval: float = 0.5
     last_seen_at: datetime | None = None
     online: bool
 

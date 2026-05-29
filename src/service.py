@@ -54,7 +54,7 @@ class IoTService:
                         "name": body.name,
                         "latitude": body.latitude,
                         "longitude": body.longitude,
-                        "polling_interval_seconds": body.polling_interval_seconds,
+                        "polling_interval": body.polling_interval,
                     }
                 )
             except DBIntegrityError as exc:
@@ -91,6 +91,8 @@ class IoTService:
             station = await self.__uow.stations.read(field_id=field_id)
             self._ensure_owner(station, org_id)
             patch = body.model_dump(exclude_unset=True)
+            if patch.get("polling_interval") is None:
+                patch.pop("polling_interval", None)
             for key, value in patch.items():
                 setattr(station, key, value)
             await self.__uow.commit()
@@ -117,7 +119,7 @@ class IoTService:
                     name=r.name,
                     latitude=r.latitude,
                     longitude=r.longitude,
-                    polling_interval_seconds=r.polling_interval_seconds,
+                    polling_interval=r.polling_interval,
                     last_seen_at=r.last_seen_at,
                     online=r.last_seen_at is not None and r.last_seen_at >= threshold,
                 )

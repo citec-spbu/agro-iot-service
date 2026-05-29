@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Double, Integer, String, Uuid
+from sqlalchemy import BigInteger, DateTime, Double, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base
@@ -16,7 +16,7 @@ class Station(Base):
     name: Mapped[str | None] = mapped_column(String, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Double, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Double, nullable=True)
-    polling_interval_seconds: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
+    polling_interval: Mapped[float] = mapped_column(
+        Double, nullable=False, default=0.5, server_default="0.5"
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
